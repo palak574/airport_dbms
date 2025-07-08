@@ -1,42 +1,103 @@
-!pip install dash dash-bootstrap-components pandas sqlalchemy pymysql
-import pandas as pd
+!pip install dash dash-bootstrap-components pandas sqlalchemy pymysql cryptography
 from sqlalchemy import create_engine
+import pandas as pd
+from dash import Dash, html, dcc
+from dash.dependencies import Input, Output
+import plotly.express as px
+
+# -----------------------
+# Database Connection
+# -----------------------
 
 user = "root"
-password = "Palak%40123"   # or URL-encode '@' as %40
+password = "Palak%40123"  # If you have '@' encode as Palak%40123
 host = "localhost"
-database = "sakila"
+database = "airport_db"
 
-engine = create_engine(f'mysql+pymysql://{user}:{password}@{host}/{database}')
-df = pd.read_sql("SELECT * FROM actor", engine)
+# Use SQLAlchemy Engine (Recommended)
+engine = create_engine(f"mysql+pymysql://{user}:{password}@{host}/{database}")
 
-print(df.head())
-print(df.columns)
-# Count occurrences of each first name
-name_counts = df['first_name'].value_counts().reset_index()
-name_counts.columns = ['first_name', 'actor_count']
-from dash import Dash, html, dcc
-import plotly.express as px
+# -----------------------
+# Load Data into Pandas
+# -----------------------
+
+query = """
+SELECT 
+    Origin_airport, 
+    Destination_airport, 
+    Passengers, 
+    Fly_date
+FROM airports2
+"""
+
+df = pd.read_sql(query, engine)
+
+# -----------------------
+# Preprocess Data
+# -----------------------
+
+agg_df = (
+    df.groupby(['Origin_airport', 'Destination_airport'])
+      .Passengers.sum()
+      .reset_index()
+)
+
+# -----------------------
+# Create Dash App
+# -----------------------
 
 app = Dash(__name__)
 
-fig = px.bar(
-    name_counts,
-    x='first_name',
-    y='actor_count',
-    title='Number of Actors by First Name'
-)
+# -----------------------
+# Layout
+# -----------------------
 
 app.layout = html.Div(children=[
-    html.H1(children='Sakila Actor Dashboard'),
-
-    html.Div(children='This shows how many actors share each first name.'),
-
-    dcc.Graph(
-        id='actor-graph',
-        figure=fig
-    )
+    html.H1("✈️ Airport Passengers Dashboard"),
+    
+    html.Div("Displays total passengers by route."),
+    
+    dcc.Dropdown(
+        id="origin-dropdown",
+        options=[
+            {'label': orig, 'value': orig}
+            for orig in sorted(df["Origin_airport"].unique())
+        ],
+        placeholder="Select an Origin Airport",
+        multi=False
+    ),
+    
+    dcc.Graph(id="passenger-graph")
 ])
 
-if __name__ == '__main__':
+# -----------------------
+# Callback to Update Graph
+# -----------------------
+
+@app.callback(
+    Output("passenger-graph", "figure"),
+    [Input("origin-dropdown", "value")]
+)
+def update_graph(selected_origin):
+    if selected_origin:
+        filtered_df = agg_df[agg_df["Origin_airport"] == selected_origin]
+    else:
+        filtered_df = agg_df
+    
+    fig = px.bar(
+        filtered_df,
+        x="Destination_airport",
+        y="Passengers",
+        color="Destination_airport",
+        title=f"Total Passengers{' from ' + selected_origin if selected_origin else ''}",
+        labels={"Passengers": "Total Passengers"}
+    )
+    return fig
+
+# -----------------------
+# Run Server
+# -----------------------
+
+if __name__ == "__main__":
     app.run(debug=True)
+
