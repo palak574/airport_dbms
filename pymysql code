@@ -1,0 +1,42 @@
+!pip install dash dash-bootstrap-components pandas sqlalchemy pymysql
+import pandas as pd
+from sqlalchemy import create_engine
+
+user = "root"
+password = "Palak%40123"   # or URL-encode '@' as %40
+host = "localhost"
+database = "sakila"
+
+engine = create_engine(f'mysql+pymysql://{user}:{password}@{host}/{database}')
+df = pd.read_sql("SELECT * FROM actor", engine)
+
+print(df.head())
+print(df.columns)
+# Count occurrences of each first name
+name_counts = df['first_name'].value_counts().reset_index()
+name_counts.columns = ['first_name', 'actor_count']
+from dash import Dash, html, dcc
+import plotly.express as px
+
+app = Dash(__name__)
+
+fig = px.bar(
+    name_counts,
+    x='first_name',
+    y='actor_count',
+    title='Number of Actors by First Name'
+)
+
+app.layout = html.Div(children=[
+    html.H1(children='Sakila Actor Dashboard'),
+
+    html.Div(children='This shows how many actors share each first name.'),
+
+    dcc.Graph(
+        id='actor-graph',
+        figure=fig
+    )
+])
+
+if __name__ == '__main__':
+    app.run(debug=True)
